@@ -34,7 +34,7 @@ import {
   type AnalysisResult,
   type Finding,
 } from "./friction-data";
-import { inputOf, lockedOf, previewOf, summaryOf } from "./report-gate";
+import { inputOf, previewOf, summaryOf } from "./report-gate";
 
 const goalIcons: Record<(typeof goals)[number]["icon"], LucideIcon> = {
   lead: UserPlus,
@@ -201,7 +201,13 @@ export default function FrictionAnalyzer() {
             <p className="jk-hint mt-1">Monthly figures from your analytics.</p>
           </div>
 
-          <MetricInput id="visitors" label="Monthly visitors" value={visitors} onChange={setVisitors} placeholder="100000" />
+          <MetricInput
+            id="visitors"
+            label="Monthly visitors"
+            value={visitors}
+            onChange={setVisitors}
+            placeholder="100000"
+          />
           <MetricInput
             id="conversion"
             label="Conversion rate"
@@ -211,7 +217,14 @@ export default function FrictionAnalyzer() {
             suffix="%"
             step="0.1"
           />
-          <MetricInput id="bounce" label="Bounce rate" value={bounceRate} onChange={setBounceRate} placeholder="52" suffix="%" />
+          <MetricInput
+            id="bounce"
+            label="Bounce rate"
+            value={bounceRate}
+            onChange={setBounceRate}
+            placeholder="52"
+            suffix="%"
+          />
 
           {error && (
             <div className="jk-error" role="alert">
@@ -238,7 +251,11 @@ export default function FrictionAnalyzer() {
           </div>
         ) : result ? (
           <>
-            <FrictionReport result={gate ? previewOf(result) : result} onReset={resetAnalysis} part={gate ? "preview" : "all"} />
+            <FrictionReport
+              result={gate ? previewOf(result) : result}
+              onReset={resetAnalysis}
+              part={gate ? "preview" : "all"}
+            />
             {gate ? (
               <ReportGate
                 agent="conversion-friction"
@@ -251,7 +268,7 @@ export default function FrictionAnalyzer() {
                 }}
               >
                 {/* Sealed reports aren't in the page yet: blur the example's findings instead. */}
-                <LockedFindings {...lockedOf(gate.token ? exampleResult : result)} />
+                <FrictionReport result={gate.token ? exampleResult : result} part="locked" />
               </ReportGate>
             ) : (
               <ReportCta />
@@ -342,8 +359,8 @@ export function FrictionMap({ findings, compact = false }: { findings: Finding[]
 }
 
 /**
- * part: "all" = the full report; "preview" = before the email form (score,
- * metrics, map and the top findings). The rest is <LockedFindings>.
+ * part: "all" = the full report; "preview" = before the email form (just
+ * the page analysed); "locked" = everything else, blurred behind the form.
  */
 function FrictionReport({
   result,
@@ -352,7 +369,7 @@ function FrictionReport({
 }: {
   result: AnalysisResult;
   onReset?: () => void;
-  part?: "all" | "preview";
+  part?: "all" | "preview" | "locked";
 }) {
   const reportText = [
     `Friction report — ${result.website}`,
@@ -370,105 +387,111 @@ function FrictionReport({
 
   return (
     <article aria-label="Friction report">
-      <header className="cf-report-head">
-        <div className="min-w-0">
-          <p className="jk-eyebrow">Friction report</p>
-          <h3 className="cf-report-title break-all">{result.website}</h3>
-        </div>
-        {onReset && (
-          <div className="flex flex-wrap gap-2">
-            {part === "all" && <CopyButton text={reportText} label="Copy report" />}
-            <button type="button" className="jk-copy" onClick={onReset}>
-              <RotateCcw size={15} aria-hidden="true" />
-              Analyse another page
-            </button>
+      {part !== "locked" && (
+        <header className="cf-report-head">
+          <div className="min-w-0">
+            <p className="jk-eyebrow">Friction report</p>
+            <h3 className="cf-report-title break-all">{result.website}</h3>
           </div>
-        )}
-      </header>
+          {onReset && (
+            <div className="flex flex-wrap gap-2">
+              {part === "all" && <CopyButton text={reportText} label="Copy report" />}
+              <button type="button" className="jk-copy" onClick={onReset}>
+                <RotateCcw size={15} aria-hidden="true" />
+                Analyse another page
+              </button>
+            </div>
+          )}
+        </header>
+      )}
 
-      {result.fetch_warning && (
+      {part !== "locked" && result.fetch_warning && (
         <p className="jk-error mb-4" role="note">
           <TriangleAlert size={18} aria-hidden="true" className="mt-px shrink-0" />
           {result.fetch_warning}
         </p>
       )}
 
-      {/* Score + metrics */}
-      <section className="jk-card jk-card-pad" aria-label="Friction score">
-        <div className="grid gap-8 lg:grid-cols-[1.2fr_1fr]">
-          <div>
-            <p className="jk-label-sm">Friction score · lower is better</p>
-            <div className="mt-3 flex items-baseline gap-3">
-              <span className="cf-score">
-                <CountUp value={result.score} />
-              </span>
-              <span className="text-lg font-semibold text-[var(--jk-ink)]">{getScoreLabel(result.score)}</span>
+      {part !== "preview" && (
+        <>
+          {/* Score + metrics */}
+          <section className="jk-card jk-card-pad" aria-label="Friction score">
+            <div className="grid gap-8 lg:grid-cols-[1.2fr_1fr]">
+              <div>
+                <p className="jk-label-sm">Friction score · lower is better</p>
+                <div className="mt-3 flex items-baseline gap-3">
+                  <span className="cf-score">
+                    <CountUp value={result.score} />
+                  </span>
+                  <span className="text-lg font-semibold text-[var(--jk-ink)]">{getScoreLabel(result.score)}</span>
+                </div>
+                <div
+                  className="cf-meter"
+                  role="meter"
+                  aria-label="Friction score"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={result.score}
+                >
+                  <span className="cf-meter-marker" style={{ left: `${pct}%` }} />
+                </div>
+                <div className="mt-2 flex justify-between text-xs text-[var(--jk-muted)]">
+                  <span>Low</span>
+                  <span>Moderate</span>
+                  <span>High</span>
+                </div>
+                <p className="mt-5 text-[15.5px] leading-7 text-[var(--jk-body)]">
+                  {getScoreDescription(result.score)} {result.summary}
+                </p>
+              </div>
+
+              <dl className="cf-metrics">
+                <div>
+                  <dt>Goal</dt>
+                  <dd>{result.metrics.primary_goal}</dd>
+                </div>
+                <div>
+                  <dt>Monthly visitors</dt>
+                  <dd>{formatNumber(result.metrics.monthly_visitors)}</dd>
+                </div>
+                <div>
+                  <dt>Conversion rate</dt>
+                  <dd>{result.metrics.conversion_rate !== null ? `${result.metrics.conversion_rate}%` : "—"}</dd>
+                </div>
+                <div>
+                  <dt>Bounce rate</dt>
+                  <dd>{result.metrics.bounce_rate !== null ? `${result.metrics.bounce_rate}%` : "—"}</dd>
+                </div>
+              </dl>
             </div>
-            <div
-              className="cf-meter"
-              role="meter"
-              aria-label="Friction score"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={result.score}
-            >
-              <span className="cf-meter-marker" style={{ left: `${pct}%` }} />
-            </div>
-            <div className="mt-2 flex justify-between text-xs text-[var(--jk-muted)]">
-              <span>Low</span>
-              <span>Moderate</span>
-              <span>High</span>
-            </div>
-            <p className="mt-5 text-[15.5px] leading-7 text-[var(--jk-body)]">
-              {getScoreDescription(result.score)} {result.summary}
-            </p>
+          </section>
+
+          {/* Map + ordered findings */}
+          <div className="mt-4 grid gap-4 lg:grid-cols-[300px_1fr]">
+            <section className="jk-card jk-card-pad lg:self-start" aria-label="Friction map">
+              <p className="jk-label-sm">Where visitors get stuck</p>
+              <div className="mt-4">
+                <FrictionMap findings={result.findings} />
+              </div>
+              <ul className="cf-legend">
+                <li>
+                  <i className="cf-heat--high" /> High
+                </li>
+                <li>
+                  <i className="cf-heat--medium" /> Medium
+                </li>
+                <li>
+                  <i className="cf-heat--low" /> Low
+                </li>
+              </ul>
+            </section>
+
+            <FindingGroups findings={result.findings} />
           </div>
 
-          <dl className="cf-metrics">
-            <div>
-              <dt>Goal</dt>
-              <dd>{result.metrics.primary_goal}</dd>
-            </div>
-            <div>
-              <dt>Monthly visitors</dt>
-              <dd>{formatNumber(result.metrics.monthly_visitors)}</dd>
-            </div>
-            <div>
-              <dt>Conversion rate</dt>
-              <dd>{result.metrics.conversion_rate !== null ? `${result.metrics.conversion_rate}%` : "—"}</dd>
-            </div>
-            <div>
-              <dt>Bounce rate</dt>
-              <dd>{result.metrics.bounce_rate !== null ? `${result.metrics.bounce_rate}%` : "—"}</dd>
-            </div>
-          </dl>
-        </div>
-      </section>
-
-      {/* Map + ordered findings */}
-      <div className="mt-4 grid gap-4 lg:grid-cols-[300px_1fr]">
-        <section className="jk-card jk-card-pad lg:self-start" aria-label="Friction map">
-          <p className="jk-label-sm">Where visitors get stuck</p>
-          <div className="mt-4">
-            <FrictionMap findings={result.findings} />
-          </div>
-          <ul className="cf-legend">
-            <li>
-              <i className="cf-heat--high" /> High
-            </li>
-            <li>
-              <i className="cf-heat--medium" /> Medium
-            </li>
-            <li>
-              <i className="cf-heat--low" /> Low
-            </li>
-          </ul>
-        </section>
-
-        <FindingGroups findings={result.findings} />
-      </div>
-
-      {part === "all" && <QuickWins wins={result.quick_wins} copyable={Boolean(onReset)} />}
+          <QuickWins wins={result.quick_wins} copyable={Boolean(onReset)} />
+        </>
+      )}
     </article>
   );
 }
@@ -549,15 +572,5 @@ function QuickWins({ wins, copyable }: { wins: string[]; copyable: boolean }) {
         </section>
       )}
     </>
-  );
-}
-
-/** The findings and quick wins after the preview (shown blurred behind the email form). */
-function LockedFindings({ findings, quick_wins }: Pick<AnalysisResult, "findings" | "quick_wins">) {
-  return (
-    <div>
-      {findings.length > 0 && <FindingGroups findings={findings} />}
-      <QuickWins wins={quick_wins} copyable={false} />
-    </div>
   );
 }

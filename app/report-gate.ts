@@ -4,26 +4,11 @@
 /* (when the report isn't sealed and is only blurred).                 */
 /* ------------------------------------------------------------------ */
 
-import { getPriority, getScoreLabel, type AnalysisResult, type Finding } from "./friction-data";
+import { getScoreLabel, type AnalysisResult } from "./friction-data";
 
-/** Findings shown in full in the preview. */
-export const PREVIEW_FINDINGS = 3;
-
-const order = { fix_first: 0, fix_next: 1, optimize: 2 } as const;
-
-/** Findings in the order the report shows them: fix first, fix next, optimise. */
-export function rankFindings(findings: Finding[]): Finding[] {
-  return [...findings].sort((a, b) => order[getPriority(a)] - order[getPriority(b)]);
-}
-
-/** Score, summary and metrics, plus the three most important findings. */
+/** Only the page and goal the visitor entered — the whole report is locked. */
 export function previewOf(result: AnalysisResult): AnalysisResult {
-  return { ...result, findings: rankFindings(result.findings).slice(0, PREVIEW_FINDINGS), quick_wins: [] };
-}
-
-/** The findings and quick wins the preview leaves out. */
-export function lockedOf(result: AnalysisResult): Pick<AnalysisResult, "findings" | "quick_wins"> {
-  return { findings: rankFindings(result.findings).slice(PREVIEW_FINDINGS), quick_wins: result.quick_wins };
+  return { ...result, score: 0, summary: "", findings: [], quick_wins: [] };
 }
 
 export function inputOf({ url, goal }: { url: string; goal: string }): string {
