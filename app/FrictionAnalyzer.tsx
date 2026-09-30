@@ -19,7 +19,7 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { EmptyPreview, WorkspaceSection } from "../components/agent/AgentTemplate";
 import { CopyButton, CountUp, LoadingSteps } from "../components/agent/AgentUi";
-import ReportGate, { ReportCta } from "../components/agent/ReportGate";
+import ReportGate, { GoogleReturn, ReportCta } from "../components/agent/ReportGate";
 import type { ReportGateInfo } from "../lib/lead-gate";
 import {
   exampleResult,
@@ -243,6 +243,23 @@ export default function FrictionAnalyzer() {
       <p className="jk-sr" role="status">
         {result && !loading ? "Friction report ready." : ""}
       </p>
+
+      {/* Back from "Continue with Google": unlock the saved report. */}
+
+      <GoogleReturn
+
+        agent="conversion-friction"
+
+        onFull={(full) => {
+
+          setResult(full as AnalysisResult);
+
+          setGate(null);
+
+        }}
+
+      />
+
 
       <div ref={outputRef} className="cf-output">
         {loading ? (
