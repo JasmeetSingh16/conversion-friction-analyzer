@@ -19,6 +19,8 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { EmptyPreview, WorkspaceSection } from "../components/agent/AgentTemplate";
 import { CopyButton, CountUp, LoadingSteps } from "../components/agent/AgentUi";
+import ReportGate, { ReportCta } from "../components/agent/ReportGate";
+import type { ReportGateInfo } from "../lib/lead-gate";
 import {
   exampleResult,
   formatNumber,
@@ -32,6 +34,7 @@ import {
   type AnalysisResult,
   type Finding,
 } from "./friction-data";
+import { inputOf, lockedOf, previewOf, summaryOf } from "./report-gate";
 
 const goalIcons: Record<(typeof goals)[number]["icon"], LucideIcon> = {
   lead: UserPlus,
@@ -52,6 +55,8 @@ export default function FrictionAnalyzer() {
   const [bounceRate, setBounceRate] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  // Set while the full report is locked behind the email form.
+  const [gate, setGate] = useState<ReportGateInfo | null>(null);
   const [error, setError] = useState("");
   const [sampleIndex, setSampleIndex] = useState(-1);
 
@@ -76,6 +81,7 @@ export default function FrictionAnalyzer() {
 
     setError("");
     setResult(null);
+    setGate(null);
 
     if (!url.trim()) {
       setError("Please enter a website URL.");
@@ -107,7 +113,9 @@ export default function FrictionAnalyzer() {
         throw new Error(data.error || "Analysis failed.");
       }
 
-      setResult(data);
+      const { gate: gateInfo, ...report } = data as AnalysisResult & { gate?: ReportGateInfo | null };
+      setResult(report);
+      setGate(gateInfo ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       formRef.current?.scrollIntoView({ block: "start" });
@@ -118,6 +126,7 @@ export default function FrictionAnalyzer() {
 
   function resetAnalysis() {
     setResult(null);
+    setGate(null);
     setError("");
     formRef.current?.scrollIntoView({ block: "start" });
   }
@@ -228,7 +237,26 @@ export default function FrictionAnalyzer() {
             <LoadingSteps steps={LOADING_STEPS} interval={2200} />
           </div>
         ) : result ? (
-          <FrictionReport result={result} onReset={resetAnalysis} />
+          <>
+            <FrictionReport result={gate ? previewOf(result) : result} onReset={resetAnalysis} part={gate ? "preview" : "all"} />
+            {gate ? (
+              <ReportGate
+                agent="conversion-friction"
+                gate={gate}
+                input={inputOf({ url: result.website, goal: result.metrics.primary_goal })}
+                summary={summaryOf(result)}
+                onUnlock={(full) => {
+                  if (full) setResult(full as AnalysisResult);
+                  setGate(null);
+                }}
+              >
+                {/* Sealed reports aren't in the page yet: blur the example's findings instead. */}
+                <LockedFindings {...lockedOf(gate.token ? exampleResult : result)} />
+              </ReportGate>
+            ) : (
+              <ReportCta />
+            )}
+          </>
         ) : (
           <EmptyPreview
             title="Your friction map appears here"
@@ -313,13 +341,19 @@ export function FrictionMap({ findings, compact = false }: { findings: Finding[]
   );
 }
 
-function FrictionReport({ result, onReset }: { result: AnalysisResult; onReset?: () => void }) {
-  const groups = [
-    { key: "fix_first", title: "Fix first", note: "High severity, reliable evidence" },
-    { key: "fix_next", title: "Fix next", note: "Medium severity" },
-    { key: "optimize", title: "Optimise", note: "Smaller or less certain" },
-  ] as const;
-
+/**
+ * part: "all" = the full report; "preview" = before the email form (score,
+ * metrics, map and the top findings). The rest is <LockedFindings>.
+ */
+function FrictionReport({
+  result,
+  onReset,
+  part = "all",
+}: {
+  result: AnalysisResult;
+  onReset?: () => void;
+  part?: "all" | "preview";
+}) {
   const reportText = [
     `Friction report — ${result.website}`,
     `Friction score: ${result.score}/100 (${getScoreLabel(result.score)})`,
@@ -343,7 +377,7 @@ function FrictionReport({ result, onReset }: { result: AnalysisResult; onReset?:
         </div>
         {onReset && (
           <div className="flex flex-wrap gap-2">
-            <CopyButton text={reportText} label="Copy report" />
+            {part === "all" && <CopyButton text={reportText} label="Copy report" />}
             <button type="button" className="jk-copy" onClick={onReset}>
               <RotateCcw size={15} aria-hidden="true" />
               Analyse another page
@@ -431,61 +465,81 @@ function FrictionReport({ result, onReset }: { result: AnalysisResult; onReset?:
           </ul>
         </section>
 
-        <div className="grid gap-4">
-          {groups.map((g) => {
-            const items = result.findings.filter((f) => getPriority(f) === g.key);
-            if (!items.length) return null;
-            return (
-              <section key={g.key} className="jk-card jk-card-pad" aria-label={g.title}>
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h4 className="text-lg font-bold tracking-tight text-[var(--jk-ink)]">
-                    {g.title} <span className="text-[var(--jk-muted)]">· {items.length}</span>
-                  </h4>
-                  <p className="jk-hint">{g.note}</p>
-                </div>
-                <ul className="mt-4 grid gap-3">
-                  {items.map((f, i) => (
-                    <li key={`${f.category}-${i}`} className={`cf-finding cf-heat-edge--${f.severity.toLowerCase()}`}>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="cf-zone-tag">{zoneFor(f.category).label}</span>
-                        <span className={`cf-sev cf-sev--${f.severity.toLowerCase()}`}>{f.severity}</span>
-                        <span className="text-xs font-medium text-[var(--jk-muted)]">{f.confidence} confidence</span>
-                      </div>
-                      <p className="mt-2 font-semibold text-[var(--jk-ink)]">{f.issue}</p>
-                      <dl className="cf-finding-body">
-                        <div>
-                          <dt>Evidence</dt>
-                          <dd>{f.evidence}</dd>
-                        </div>
-                        <div>
-                          <dt>Why it matters</dt>
-                          <dd>{f.why_it_matters}</dd>
-                        </div>
-                        <div className="cf-fix">
-                          <dt>Fix</dt>
-                          <dd>{f.recommended_fix}</dd>
-                        </div>
-                      </dl>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            );
-          })}
-        </div>
+        <FindingGroups findings={result.findings} />
       </div>
 
-      {/* Quick wins */}
-      {result.quick_wins.length > 0 && (
+      {part === "all" && <QuickWins wins={result.quick_wins} copyable={Boolean(onReset)} />}
+    </article>
+  );
+}
+
+const groups = [
+  { key: "fix_first", title: "Fix first", note: "High severity, reliable evidence" },
+  { key: "fix_next", title: "Fix next", note: "Medium severity" },
+  { key: "optimize", title: "Optimise", note: "Smaller or less certain" },
+] as const;
+
+/** Findings grouped by what to fix first. */
+function FindingGroups({ findings }: { findings: Finding[] }) {
+  return (
+    <div className="grid gap-4">
+      {groups.map((g) => {
+        const items = findings.filter((f) => getPriority(f) === g.key);
+        if (!items.length) return null;
+        return (
+          <section key={g.key} className="jk-card jk-card-pad" aria-label={g.title}>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h4 className="text-lg font-bold tracking-tight text-[var(--jk-ink)]">
+                {g.title} <span className="text-[var(--jk-muted)]">· {items.length}</span>
+              </h4>
+              <p className="jk-hint">{g.note}</p>
+            </div>
+            <ul className="mt-4 grid gap-3">
+              {items.map((f, i) => (
+                <li key={`${f.category}-${i}`} className={`cf-finding cf-heat-edge--${f.severity.toLowerCase()}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="cf-zone-tag">{zoneFor(f.category).label}</span>
+                    <span className={`cf-sev cf-sev--${f.severity.toLowerCase()}`}>{f.severity}</span>
+                    <span className="text-xs font-medium text-[var(--jk-muted)]">{f.confidence} confidence</span>
+                  </div>
+                  <p className="mt-2 font-semibold text-[var(--jk-ink)]">{f.issue}</p>
+                  <dl className="cf-finding-body">
+                    <div>
+                      <dt>Evidence</dt>
+                      <dd>{f.evidence}</dd>
+                    </div>
+                    <div>
+                      <dt>Why it matters</dt>
+                      <dd>{f.why_it_matters}</dd>
+                    </div>
+                    <div className="cf-fix">
+                      <dt>Fix</dt>
+                      <dd>{f.recommended_fix}</dd>
+                    </div>
+                  </dl>
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function QuickWins({ wins, copyable }: { wins: string[]; copyable: boolean }) {
+  return (
+    <>
+      {wins.length > 0 && (
         <section className="cf-wins" aria-labelledby="cf-wins-title">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h4 id="cf-wins-title" className="text-lg font-bold tracking-tight">
               Quick wins you can ship this week
             </h4>
-            {onReset && <CopyButton text={result.quick_wins.map((w) => `- ${w}`).join("\n")} label="Copy" />}
+            {copyable && <CopyButton text={wins.map((w) => `- ${w}`).join("\n")} label="Copy" />}
           </div>
           <ul className="mt-4 grid gap-3 md:grid-cols-3">
-            {result.quick_wins.map((w, i) => (
+            {wins.map((w, i) => (
               <li key={i} className="cf-win">
                 <CircleCheck size={18} aria-hidden="true" />
                 {w}
@@ -494,6 +548,16 @@ function FrictionReport({ result, onReset }: { result: AnalysisResult; onReset?:
           </ul>
         </section>
       )}
-    </article>
+    </>
+  );
+}
+
+/** The findings and quick wins after the preview (shown blurred behind the email form). */
+function LockedFindings({ findings, quick_wins }: Pick<AnalysisResult, "findings" | "quick_wins">) {
+  return (
+    <div>
+      {findings.length > 0 && <FindingGroups findings={findings} />}
+      <QuickWins wins={quick_wins} copyable={false} />
+    </div>
   );
 }

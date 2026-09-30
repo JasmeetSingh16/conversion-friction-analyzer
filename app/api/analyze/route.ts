@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { gateReport } from "../../../lib/report-gate";
+import type { AnalysisResult } from "../../friction-data";
+import { inputOf, previewOf, summaryOf } from "../../report-gate";
 import Groq from "groq-sdk";
 
 const groq = new Groq({
@@ -1365,7 +1368,7 @@ Return ONLY valid JSON.
        FINAL RESPONSE
     ------------------------------------------------- */
 
-    return NextResponse.json({
+    const report: AnalysisResult = {
       score:
         normalizedScore,
 
@@ -1385,7 +1388,18 @@ Return ONLY valid JSON.
 
       fetch_warning:
         null,
-    });
+    };
+
+    // Preview + sealed full report (see lib/report-gate.ts).
+    return NextResponse.json(
+      gateReport({
+        agent: "conversion-friction",
+        input: inputOf({ url, goal: report.metrics.primary_goal }),
+        summary: summaryOf(report),
+        full: report,
+        preview: previewOf(report),
+      })
+    );
   } catch (error) {
     console.error(
       "Conversion analyzer error:",
